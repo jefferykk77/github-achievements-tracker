@@ -9,14 +9,12 @@ import (
 	"time"
 )
 
-// PRCommit represents a commit inside a PR.
 type PRCommit struct {
 	Commit struct {
 		Message string `json:"message"`
 	} `json:"commit"`
 }
 
-// PullRequest represents a GitHub PR node.
 type PullRequest struct {
 	Number     int       `json:"number"`
 	Title      string    `json:"title"`
@@ -30,7 +28,6 @@ type PullRequest struct {
 	} `json:"commits"`
 }
 
-// GraphQLResponse represents the response structure of the GraphQL query.
 type GraphQLResponse struct {
 	Data struct {
 		User struct {
@@ -45,15 +42,13 @@ type GraphQLResponse struct {
 	} `json:"data"`
 }
 
-// Achievement represents a tracked GitHub Achievement.
 type Achievement struct {
 	Name        string
 	Description string
-	Levels      []int // Thresholds for each level: Level 1 (Default), Level 2 (Bronze), Level 3 (Silver), Level 4 (Gold)
+	Levels      []int
 	Units       string
 }
 
-// Progress represents the progress of an achievement.
 type Progress struct {
 	Achievement  Achievement
 	PublicCount  int
@@ -61,7 +56,6 @@ type Progress struct {
 	TotalCount   int
 }
 
-// GetLevel returns the current level (0-4), the current milestone value, the next milestone value, and progress percentage.
 func (p *Progress) GetLevel(usePrivate bool) (level int, currentVal int, targetVal int, percent float64) {
 	count := p.PublicCount
 	if usePrivate {
@@ -69,7 +63,6 @@ func (p *Progress) GetLevel(usePrivate bool) (level int, currentVal int, targetV
 	}
 	currentVal = count
 
-	// Check levels
 	for i, threshold := range p.Achievement.Levels {
 		if count >= threshold {
 			level = i + 1
@@ -98,7 +91,6 @@ func (p *Progress) GetLevel(usePrivate bool) (level int, currentVal int, targetV
 	return
 }
 
-// FetchPullRequests fetches all merged PRs for a given user using the gh CLI.
 func FetchPullRequests(username string, token string) ([]PullRequest, error) {
 	var allPRs []PullRequest
 	cursor := ""
@@ -132,14 +124,12 @@ func FetchPullRequests(username string, token string) ([]PullRequest, error) {
 	}`
 
 	for hasNext {
-		// Execute gh api graphql
 		args := []string{"api", "graphql", "-f", fmt.Sprintf("query=%s", query), "-F", fmt.Sprintf("username=%s", username)}
 		if cursor != "" {
 			args = append(args, "-F", fmt.Sprintf("cursor=%s", cursor))
 		}
 		cmd := exec.Command("gh", args...)
 		
-		// Set GITHUB_TOKEN if provided
 		if token != "" {
 			cmd.Env = append(cmd.Environ(), fmt.Sprintf("GITHUB_TOKEN=%s", token))
 		}
@@ -148,14 +138,13 @@ func FetchPullRequests(username string, token string) ([]PullRequest, error) {
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
 
-		err := cmd.Run()
-		if err != nil {
-			return nil, fmt.Errorf("gh command failed: %s; error: %w", stderr.String(), err)
+		if err := cmd.Run(); err != nil {
+			return nil, fmt.Errorf("gh failed: %s: %w", stderr.String(), err)
 		}
 
 		var resp GraphQLResponse
 		if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
-			return nil, fmt.Errorf("failed to parse JSON response: %w", err)
+			return nil, err
 		}
 
 		allPRs = append(allPRs, resp.Data.User.PullRequests.Nodes...)
@@ -166,7 +155,6 @@ func FetchPullRequests(username string, token string) ([]PullRequest, error) {
 	return allPRs, nil
 }
 
-// CalculateAchievements processes the list of PRs and returns achievements progress.
 func CalculateAchievements(prs []PullRequest) (pullShark Progress, pairExtra Progress) {
 	pullShark = Progress{
 		Achievement: Achievement{
@@ -195,7 +183,6 @@ func CalculateAchievements(prs []PullRequest) (pullShark Progress, pairExtra Pro
 			}
 		}
 
-		// Pull Shark counts
 		if pr.Repository.IsPrivate {
 			pullShark.PrivateCount++
 		} else {
@@ -203,7 +190,6 @@ func CalculateAchievements(prs []PullRequest) (pullShark Progress, pairExtra Pro
 		}
 		pullShark.TotalCount++
 
-		// Pair Extraordinaire counts
 		if isCoauthored {
 			if pr.Repository.IsPrivate {
 				pairExtra.PrivateCount++

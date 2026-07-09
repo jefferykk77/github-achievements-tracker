@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -11,7 +12,6 @@ import (
 	"github.com/jefferykk77/github-achievements-tracker/tracker"
 )
 
-// ANSI color codes
 const (
 	ColorReset  = "\033[0m"
 	ColorBold   = "\033[1m"
@@ -33,28 +33,23 @@ func getActiveUser(token string) (string, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	err := cmd.Run()
-	if err != nil {
-		return "", fmt.Errorf("failed to get active user: %s; error: %w", stderr.String(), err)
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("failed to get active user: %s: %w", stderr.String(), err)
 	}
 
 	return strings.TrimSpace(stdout.String()), nil
 }
 
 func getActiveToken() string {
-	// Try to get token from environment or CLI
-	token := os.Getenv("GITHUB_TOKEN")
-	if token != "" {
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
 		return token
 	}
 
-	// Try to retrieve token from gh CLI directly
 	cmd := exec.Command("gh", "auth", "token")
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	if err := cmd.Run(); err == nil {
-		t := strings.TrimSpace(stdout.String())
-		if t != "" {
+		if t := strings.TrimSpace(stdout.String()); t != "" {
 			return t
 		}
 	}
@@ -99,7 +94,7 @@ func getLevelLabel(level int) string {
 	}
 }
 
-func printProgressDashboard(username string, progress tracker.Progress, usePrivate bool) {
+func printProgressDashboard(progress tracker.Progress, usePrivate bool) {
 	level, current, target, percent := progress.GetLevel(usePrivate)
 
 	fmt.Println()
@@ -134,8 +129,8 @@ func printProgressDashboard(username string, progress tracker.Progress, usePriva
 }
 
 func main() {
-	userFlag := flag.String("user", "", "GitHub username to check")
-	privateFlag := flag.Bool("private", true, "Include private contributions (if visible to you)")
+	userFlag := flag.String("user", "", "GitHub username")
+	privateFlag := flag.Bool("private", true, "Include private contributions")
 	flag.Parse()
 
 	token := getActiveToken()
@@ -144,18 +139,16 @@ func main() {
 	if username == "" {
 		activeUser, err := getActiveUser(token)
 		if err != nil {
-			fmt.Printf("%sError: Couldn't determine active user. Please specify one with -user <username>.%s\n", ColorRed, ColorReset)
-			os.Exit(1)
+			log.Fatalf("%sError: cannot determine active user, specify with -user%s", ColorRed, ColorReset)
 		}
 		username = activeUser
 	}
 
-	fmt.Printf("%sFetching merged pull requests for user: %s%s%s...\n", ColorGray, ColorBold, username, ColorReset)
+	fmt.Printf("%sFetching merged pull requests for %s...\n", ColorGray, username)
 	
 	prs, err := tracker.FetchPullRequests(username, token)
 	if err != nil {
-		fmt.Printf("%sError fetching data: %v%s\n", ColorRed, err, ColorReset)
-		os.Exit(1)
+		log.Fatalf("%sError fetching data: %v%s", ColorRed, err, ColorReset)
 	}
 
 	pullShark, pairExtra := tracker.CalculateAchievements(prs)
@@ -166,8 +159,8 @@ func main() {
 	fmt.Printf("Target User: %s%s%s\n", ColorBold, username, ColorReset)
 	fmt.Printf("Total Merged PRs Found: %s%d%s\n", ColorBold, len(prs), ColorReset)
 
-	printProgressDashboard(username, pullShark, *privateFlag)
-	printProgressDashboard(username, pairExtra, *privateFlag)
+	printProgressDashboard(pullShark, *privateFlag)
+	printProgressDashboard(pairExtra, *privateFlag)
 	
 	fmt.Println("\n" + strings.Repeat("=", 60))
 	fmt.Printf("%sNote: Achievements take 24-48 hours to sync on GitHub.%s\n", ColorGray, ColorReset)
